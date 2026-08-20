@@ -1,0 +1,6 @@
+.venv/
+ingest
+*.exe
+__pycache__/
+feed/live.jsonl
+.DS_Store

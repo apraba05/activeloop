@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Live-updating vector feed demo: deterministic embeddings and mutable cosine search, entirely in your browser.">
+  <title>Activeloop · Live Vector Feed</title>
+  <style>
+    :root { color-scheme: dark; --bg:#090b10; --panel:#11151d; --line:#283142; --ink:#e8edf5; --muted:#8d9aac; --cyan:#5eead4; --blue:#60a5fa; --amber:#fbbf24; --red:#fb7185; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; min-height:100%; background:var(--bg); color:var(--ink); }
+    body { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; overflow-x:hidden; }
+    button, input, select { font:inherit; }
+    .wrap { width:min(1120px, calc(100% - 32px)); margin:0 auto; padding:34px 0 44px; }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:24px; }
+    .eyebrow { color:var(--cyan); font-size:12px; letter-spacing:.14em; text-transform:uppercase; margin-bottom:10px; }
+    h1 { font-size:clamp(24px, 4vw, 42px); letter-spacing:-.045em; margin:0 0 10px; }
+    .sub { color:var(--muted); max-width:680px; line-height:1.55; margin:0; font-size:14px; }
+    .status { white-space:nowrap; color:var(--cyan); border:1px solid #28584f; background:#0e221f; border-radius:999px; padding:8px 11px; font-size:12px; }
+    .status::before { content:""; display:inline-block; width:7px; height:7px; margin-right:7px; border-radius:50%; background:currentColor; box-shadow:0 0 12px currentColor; }
+    .grid { display:grid; grid-template-columns:minmax(0, 1.45fr) minmax(290px, .75fr); gap:16px; }
+    .card { min-width:0; border:1px solid var(--line); border-radius:10px; background:var(--panel); overflow:hidden; }
+    .bar { height:43px; padding:0 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:12px; }
+    .dots { display:flex; gap:6px; } .dots i { width:8px; height:8px; border-radius:50%; background:#394355; } .dots i:first-child{background:var(--red)} .dots i:nth-child(2){background:var(--amber)} .dots i:last-child{background:var(--cyan)}
+    #terminal { height:485px; overflow:auto; padding:18px; font-size:13px; line-height:1.65; scrollbar-color:#354158 transparent; }
+    .line { min-height:1.65em; overflow-wrap:anywhere; white-space:pre-wrap; } .prompt{color:var(--cyan)} .dim{color:var(--muted)} .info{color:var(--blue)} .warn{color:var(--amber)} .fresh{color:var(--cyan)} .error{color:var(--red)}
+    .side { display:flex; flex-direction:column; gap:16px; }
+    .section { padding:16px; }
+    .label { display:block; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-size:11px; margin-bottom:8px; }
+    textarea { resize:vertical; width:100%; min-height:82px; color:var(--ink); background:#0b0e14; border:1px solid var(--line); border-radius:7px; padding:10px; font:13px/1.45 inherit; outline:none; }
+    textarea:focus, select:focus { border-color:var(--blue); }
+    .row { display:flex; gap:8px; margin-top:10px; }
+    select { color:var(--ink); background:#0b0e14; border:1px solid var(--line); border-radius:7px; padding:9px; }
+    button { border:1px solid #39746a; border-radius:7px; padding:9px 12px; background:#14332d; color:var(--cyan); cursor:pointer; transition:transform .12s, filter .12s; }
+    button:hover { filter:brightness(1.18); } button:active { transform:translateY(1px); } button:disabled { opacity:.45; cursor:not-allowed; }
+    button.secondary { color:var(--ink); background:#171c27; border-color:var(--line); }
+    .row button:first-of-type { flex:1; }
+    .metric-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .metric { padding:11px; background:#0b0e14; border:1px solid #202839; border-radius:7px; }
+    .metric b { display:block; font-size:20px; color:var(--cyan); } .metric span { color:var(--muted); font-size:10px; text-transform:uppercase; }
+    .pipeline { padding:16px; }
+    .step { display:flex; gap:10px; align-items:center; color:var(--muted); font-size:12px; padding:7px 0; }
+    .step i { width:9px; height:9px; border:1px solid #465269; border-radius:50%; flex:none; }
+    .step.done { color:var(--ink); } .step.done i { border-color:var(--cyan); background:var(--cyan); box-shadow:0 0 8px #5eead477; }
+    .footer { color:#667286; font-size:11px; margin-top:18px; text-align:center; }
+    @media (max-width:780px) { .wrap{width:min(100% - 20px, 620px);padding-top:22px} header{display:block}.status{display:inline-block;margin-top:16px}.grid{grid-template-columns:1fr}.side{order:-1}#terminal{height:430px}.row{flex-wrap:wrap}.row textarea{flex-basis:100%} }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div><div class="eyebrow">Activeloop / vector-feed</div><h1>Live data. Same index.</h1><p class="sub">Stream records into a mutable vector index and watch the answer set change—without a rebuild, reindex job, or query-process restart.</p></div>
+      <div class="status">BROWSER SIMULATION ONLINE</div>
+    </header>
+    <div class="grid">
+      <section class="card" aria-label="Demo terminal">
+        <div class="bar"><span>vector-feed — demo output</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div id="terminal" role="log" aria-live="polite"></div>
+      </section>
+      <aside class="side">
+        <section class="card section">
+          <label class="label" for="query">KNN query</label>
+          <textarea id="query">streaming multimodal training data for AI</textarea>
+          <div class="row"><select id="k" aria-label="Number of results"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select><button id="search">Search index</button></div>
+          <div class="row"><button id="run">Run full demo</button><button id="ingest" class="secondary">Append fresh feed</button><button id="reset" class="secondary">Reset</button></div>
+        </section>
+        <section class="card section">
+          <span class="label">Mutable index</span>
+          <div class="metric-grid"><div class="metric"><b id="docs">0</b><span>hash documents</span></div><div class="metric"><b>64</b><span>dimensions</span></div><div class="metric"><b id="phase">empty</b><span>feed state</span></div><div class="metric"><b id="queries">0</b><span>queries</span></div></div>
+        </section>
+        <section class="card pipeline"><span class="label">Pipeline</span><div class="step" data-step="redis"><i></i>Redis vector index created</div><div class="step" data-step="stale"><i></i>Baseline rows ingested</div><div class="step" data-step="baseline"><i></i>Baseline KNN query</div><div class="step" data-step="fresh"><i></i>Fresh rows appended</div><div class="step" data-step="live"><i></i>Live KNN query</div></section>
+      </aside>
+    </div>
+    <div class="footer">COSINE · FLOAT32 · DETERMINISTIC SHA-256 TOKEN EMBEDDINGS · NO NETWORK</div>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const DIM=64;
+    const stale=[
+      {id:'stale-1',text:'Office snack inventory: bagels, coffee pods, and oat milk restock notes.'},
+      {id:'stale-2',text:'Weekly standup agenda covering payroll deadlines and desk chair orders.'}
+    ];
+    const fresh=[
+      {id:'live-1',text:'Stream multimodal training tensors into a versioned vector store without pausing inference.'},
+      {id:'live-2',text:'Continual ingestion of embeddings so RAG answers reflect data that landed seconds ago.'},
+      {id:'live-3',text:'Database for AI: low-latency similarity search over a mutable index as new samples arrive.'}
+    ];
+    const state={index:new Map(), queries:0, running:false, generation:0};
+    const $=id=>document.getElementById(id), terminal=$('terminal');
+    const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+    // Compact SHA-256 implementation. Input and digest bytes match Go's sha256.Sum256.
+    function sha256(text){
+      const bytes=new TextEncoder().encode(text), bitLen=bytes.length*8;
+      const size=((bytes.length+9+63)>>6)<<6, data=new Uint8Array(size); data.set(bytes); data[bytes.length]=128;
+      const view=new DataView(data.buffer); view.setUint32(size-4,bitLen>>>0,false); view.setUint32(size-8,Math.floor(bitLen/4294967296),false);
+      const h=new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+      const k=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+      const w=new Uint32Array(64), rr=(x,n)=>(x>>>n)|(x<<(32-n));
+      for(let off=0;off<size;off+=64){ for(let i=0;i<16;i++)w[i]=view.getUint32(off+i*4,false); for(let i=16;i<64;i++){const s0=rr(w[i-15],7)^rr(w[i-15],18)^(w[i-15]>>>3),s1=rr(w[i-2],17)^rr(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;} let [a,b,c,d,e,f,g,hh]=h; for(let i=0;i<64;i++){const S1=rr(e,6)^rr(e,11)^rr(e,25),ch=(e&f)^(~e&g),t1=(hh+S1+ch+k[i]+w[i])>>>0,S0=rr(a,2)^rr(a,13)^rr(a,22),maj=(a&b)^(a&c)^(b&c),t2=(S0+maj)>>>0;hh=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;} h[0]=(h[0]+a)>>>0;h[1]=(h[1]+b)>>>0;h[2]=(h[2]+c)>>>0;h[3]=(h[3]+d)>>>0;h[4]=(h[4]+e)>>>0;h[5]=(h[5]+f)>>>0;h[6]=(h[6]+g)>>>0;h[7]=(h[7]+hh)>>>0; }
+      const out=new Uint8Array(32), ov=new DataView(out.buffer); h.forEach((x,i)=>ov.setUint32(i*4,x,false)); return out;
+    }
+    function embedDocument(text){ const v=new Float32Array(DIM); for(const tok of text.toLowerCase().split(/\s+/).filter(Boolean)){const d=sha256(tok);for(let i=0;i<DIM;i++)v[i]=Math.fround(v[i]+Math.fround(d[i%32]/127.5-1));} let norm=0;for(const x of v)norm+=x*x;norm=Math.sqrt(norm);if(norm)for(let i=0;i<DIM;i++)v[i]=Math.fround(v[i]/norm);return v; }
+    function embedQuery(text){ const v=new Array(DIM).fill(0);for(const tok of text.toLowerCase().split(/\s+/).filter(Boolean)){const d=sha256(tok);for(let i=0;i<DIM;i++)v[i]+=d[i%32]/127.5-1;}let norm=Math.sqrt(v.reduce((s,x)=>s+x*x,0));return new Float32Array(norm?v.map(x=>x/norm):v); }
+    function ingest(rec){ if(!rec.id||!rec.text)throw new Error('need id and text');state.index.set('doc:'+rec.id,{id:'doc:'+rec.id,text:rec.text,embedding:embedDocument(rec.text)});update(); }
+    function search(q,k){const qv=embedQuery(q),hits=[];for(const doc of state.index.values()){let dot=0,an=0,bn=0;for(let i=0;i<DIM;i++){dot+=qv[i]*doc.embedding[i];an+=qv[i]*qv[i];bn+=doc.embedding[i]*doc.embedding[i];}hits.push({id:doc.id,text:doc.text,score:1-dot/(Math.sqrt(an)*Math.sqrt(bn)||1)});}return {query:q,hits:hits.sort((a,b)=>a.score-b.score).slice(0,k)};}
+    function line(text='',cls=''){const el=document.createElement('div');el.className='line '+cls;el.textContent=text;terminal.append(el);terminal.scrollTop=terminal.scrollHeight;}
+    function mark(name,on=true){document.querySelector(`[data-step="${name}"]`).classList.toggle('done',on);}
+    function update(){ $('docs').textContent=state.index.size;$('queries').textContent=state.queries;$('phase').textContent=state.index.has('doc:live-1')?'live':state.index.size?'stale':'empty'; }
+    function printResult(result,title){line(`==> ${title}`,'info');line(`    q: ${result.query}`,'dim');if(!result.hits.length){line('    (no documents indexed)','warn');return;}result.hits.forEach((h,i)=>{line(` ${i+1}. ${h.id}  distance=${h.score.toFixed(6)}`,h.id.includes('live-')?'fresh':'warn');line(`    ${h.text}`,'dim');});}
+    function setDisabled(on){state.running=on;['run','ingest','search'].forEach(id=>$(id).disabled=on);}
+    function reset(clear=true){state.generation++;state.index.clear();state.queries=0;setDisabled(false);document.querySelectorAll('.step').forEach(x=>x.classList.remove('done'));if(clear)terminal.textContent='';update();line('$ ./run.sh','prompt');line('Ready. Run the full demo, append data manually, or search the current index.','dim');}
+    function manualSearch(){const q=$('query').value.trim(),k=Number($('k').value);if(!q){line('query cannot be empty','error');return;}const r=search(q,k);state.queries++;update();printResult(r,'SEARCH');}
+    function appendFresh(show=true){let added=0;for(const rec of fresh){if(!state.index.has('doc:'+rec.id)){ingest(rec);added++;if(show)line(`indexed doc:${rec.id} (${rec.text.length} chars)`,'fresh');}}mark('fresh');if(show)line(added?`Appended ${added} fresh feed rows; index mutated in-place.`:'Fresh feed is already indexed.',added?'info':'warn');}
+    async function run(){if(state.running)return;reset();setDisabled(true);const gen=state.generation;const alive=()=>gen===state.generation;try{
+      line('==> Redis Stack (RediSearch vector module)','info');await sleep(450);if(!alive())return;line('PONG','fresh');line('FT.CREATE feed_idx ON HASH PREFIX 1 doc: ... VECTOR FLAT DIM 64 COSINE','dim');mark('redis');
+      await sleep(450);if(!alive())return;line('==> Start query API + ingest tailer','info');line('tailing feed/live.jsonl → mutable in-browser index (feed_idx)','dim');for(const rec of stale){await sleep(150);if(!alive())return;ingest(rec);line(`indexed doc:${rec.id} (${rec.text.length} chars)`,'warn');}mark('stale');
+      await sleep(1000);if(!alive())return;line('');const q=$('query').value.trim()||'streaming multimodal training data for AI',k=Number($('k').value);printResult(search(q,k),'BASELINE search (stale index only)');state.queries++;update();mark('baseline');
+      await sleep(600);if(!alive())return;line('');line('==> Append fresh feed lines (simulates live data landing)','info');for(const rec of fresh){await sleep(150);if(!alive())return;ingest(rec);line(`indexed doc:${rec.id} (${rec.text.length} chars)`,'fresh');}mark('fresh');
+      await sleep(2000);if(!alive())return;line('');printResult(search(q,k),'LIVE search (same query — answers should flip to fresh docs)');state.queries++;update();mark('live');line('');line('==> Demo complete. Index mutated in-place; query process never restarted.','fresh');
+    }catch(err){line('error: '+err.message,'error');}finally{if(alive())setDisabled(false);}}
+    $('run').addEventListener('click',run);$('search').addEventListener('click',manualSearch);$('ingest').addEventListener('click',()=>appendFresh());$('reset').addEventListener('click',()=>reset());$('query').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')manualSearch();});
+    reset();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-ingest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-ingest
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-ingest
+    spec:
+      containers:
+        - name: ingest
+          image: {{ .Values.ingest.image }}
+          env:
+            - name: REDIS_ADDR
+              value: {{ .Release.Name }}-redis:{{ .Values.redis.servicePort }}
+            - name: FEED_PATH
+              value: {{ .Values.ingest.feedPath }}
+          volumeMounts:
+            - name: feed
+              mountPath: /data
+      volumes:
+        - name: feed
+          emptyDir: {}

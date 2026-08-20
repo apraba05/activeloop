@@ -1,0 +1,12 @@
+redis:
+  image: redis/redis-stack-server:7.2.0-v10
+  servicePort: 6379
+
+ingest:
+  # Image would be built from this repo's Go ingest binary in a real deploy.
+  image: vector-feed-ingest:local
+  feedPath: /data/feed.jsonl
+
+query:
+  image: vector-feed-query:local
+  servicePort: 8080

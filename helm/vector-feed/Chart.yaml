@@ -1,0 +1,6 @@
+apiVersion: v2
+name: vector-feed
+description: Live-updating vector feed — Redis Stack + ingest sidecar shape
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
